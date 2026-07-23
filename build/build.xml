@@ -12,9 +12,12 @@
 	<!-- user.home is C:\Documents and Settings\<user name> or C:\Users\<user name> (Windows) or /Users/<user name> (Mac OSX) -->
   <property name="ext.dir" value="${user.home}/MotiveWave Extensions"/>
   <property name="dev.dir" value="${ext.dir}/dev"/>
+  <property name="ext.lib.dir" value="${ext.dir}/lib"/>
+  <property name="ext.native.dir" value="${ext.dir}/native"/>
   <property name="src.dir" value="../src/"/>
   <property name="bin.dir" value="../bin/"/>
   <property name="lib.dir" value="../lib/"/>
+  <property name="native.dir" value="../lib/native/"/>
   <!-- Name of the jar file (created in the 'jar' target) -->
   <property name="jar.name" value="examples"/>
 
@@ -30,6 +33,17 @@
       <fileset dir="classes" includes="**/*.class"/>
       <fileset dir="${src.dir}" includes="**/*.properties"/>
     </copy>
+
+    <!-- JNA + ChanlunX native library for runtime loading from MotiveWave. -->
+    <mkdir dir="${ext.lib.dir}"/>
+    <mkdir dir="${ext.native.dir}"/>
+    <copy todir="${ext.lib.dir}" overwrite="true" failonerror="false">
+      <fileset dir="${lib.dir}" includes="jna-*.jar"/>
+    </copy>
+    <copy todir="${ext.native.dir}" overwrite="true" failonerror="false">
+      <fileset dir="${native.dir}" includes="libChanlunX.dylib,libChanlunX.so,ChanlunX.dll"/>
+    </copy>
+
     <!-- This tells MotiveWave to check for any modified files and load them. -->
     <touch file="${ext.dir}/.last_updated"/>
   </target>
@@ -58,8 +72,15 @@
        This is the default task. -->
   <target name="deploy_jar" depends="jar">
     <!-- We will place this jar file in a 'lib' directory. -->
-    <mkdir dir="${ext.dir}/lib"/>
-    <copy file="jar/${jar.name}.jar" todir="${ext.dir}/lib" overwrite="true"/>
+    <mkdir dir="${ext.lib.dir}"/>
+    <mkdir dir="${ext.native.dir}"/>
+    <copy file="jar/${jar.name}.jar" todir="${ext.lib.dir}" overwrite="true"/>
+    <copy todir="${ext.lib.dir}" overwrite="true" failonerror="false">
+      <fileset dir="${lib.dir}" includes="jna-*.jar"/>
+    </copy>
+    <copy todir="${ext.native.dir}" overwrite="true" failonerror="false">
+      <fileset dir="${native.dir}" includes="libChanlunX.dylib,libChanlunX.so,ChanlunX.dll"/>
+    </copy>
     <!-- This tells MotiveWave to check for any modified files and load them. -->
     <touch file="${ext.dir}/.last_updated"/>
   </target>
@@ -67,6 +88,7 @@
   <!-- Creates a jar file (for distribution). -->
   <target name="jar" depends="compile">
     <delete dir="jar"/>
+    <mkdir dir="jar"/>
     <jar destfile="jar/${jar.name}.jar" manifest="Manifest.MF" level="9">
       <fileset dir="classes" includes="**/*.class"/>
       <fileset dir="${src.dir}" includes="**/*.properties"/>

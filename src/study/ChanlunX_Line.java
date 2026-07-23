@@ -2,17 +2,23 @@ package study;
 
 import com.motivewave.platform.sdk.common.Coordinate;
 import com.motivewave.platform.sdk.common.DataContext;
+import com.motivewave.platform.sdk.common.DataSeries;
 import com.motivewave.platform.sdk.common.Defaults;
 import com.motivewave.platform.sdk.common.desc.PathDescriptor;
 import com.motivewave.platform.sdk.draw.Line;
 import com.motivewave.platform.sdk.study.Study;
 import com.motivewave.platform.sdk.study.StudyHeader;
 
+import study.chanlunx.ChanlunXNative;
+import study.chanlunx.ChanlunXNative.Endpoint;
+
+import java.util.List;
+
 @StudyHeader(
         namespace = "com.unfinished",
         id = "ChanlunXLine",
         name = "ChanlunX Line",
-        desc = "Line segments formed by connecting highs and lows",
+        desc = "Line segments formed by connecting Chanlun Bi highs and lows (Func2)",
         menu = "ChanlunX",
         menu2 = "Custom Studies",
         overlay = true,
@@ -22,6 +28,7 @@ import com.motivewave.platform.sdk.study.StudyHeader;
 public class ChanlunX_Line extends Study
 {
     private static final String LINE_PATH = "linePath";
+    private static final int MIN_BARS = 5;
 
     @Override
     public void initialize(Defaults defaults)
@@ -49,28 +56,82 @@ public class ChanlunX_Line extends Study
         setSettingsDescriptor(sd);
     }
 
-    //Currently trivial logic, just draws a line between each consecutive bar. Replace later with something using the Chanlun functions.
     @Override
-    protected void calculate(int index, DataContext ctx)
+    public void onLoad(Defaults defaults)
     {
-        if (index < 1) {
+        ChanlunXNative.logAvailability(this::info);
+    }
+
+    /**
+     * Native Chanlun needs the full high/low series, so we recalculate all figures
+     * in one pass instead of drawing per-bar.
+     */
+    @Override
+    protected void calculateValues(DataContext ctx)
+    {
+        clearFigures();
+
+        var series = ctx.getDataSeries();
+        int size = series.size();
+        if (size < MIN_BARS) {
             return;
         }
 
-        var series = ctx.getDataSeries();
-        var path = getSettings().getPath(LINE_PATH);
+        if (!ChanlunXNative.isAvailable()) {
+            error("ChanlunX Line: native library unavailable: " + ChanlunXNative.loadError());
+            return;
+        }
 
-        long previousTime = series.getStartTime(index - 1);
-        long currentTime = series.getStartTime(index);
+        try {
+            float[] high = copyHighs(series, size);
+            float[] low = copyLows(series, size);
 
-        double previousPrice = series.getClose(index - 1);
-        double currentPrice = series.getClose(index);
+            float[] bi = ChanlunXNative.computeBi2(high, low);
+            List<Endpoint> endpoints = ChanlunXNative.extractEndpoints(bi);
 
-        var start = new Coordinate(previousTime, previousPrice);
-        var end = new Coordinate(currentTime, currentPrice);
+            info("ChanlunX Line: lib=" + ChanlunXNative.loadedPath()
+                    + " bars=" + size
+                    + " biEndpoints=" + endpoints.size());
+            info(ChanlunXNative.summarizeMarks("Bi2", bi, 40));
 
-        var line = new Line(start, end, path);
+            var path = getSettings().getPath(LINE_PATH);
+            int linesDrawn = 0;
 
-        addFigure(line);
+            for (int i = 1; i < endpoints.size(); i++) {
+                Endpoint prev = endpoints.get(i - 1);
+                Endpoint cur = endpoints.get(i);
+
+                double prevPrice = prev.isTop() ? series.getHigh(prev.index) : series.getLow(prev.index);
+                double curPrice = cur.isTop() ? series.getHigh(cur.index) : series.getLow(cur.index);
+
+                var start = new Coordinate(series.getStartTime(prev.index), prevPrice);
+                var end = new Coordinate(series.getStartTime(cur.index), curPrice);
+                addFigure(new Line(start, end, path));
+                linesDrawn++;
+            }
+
+            info("ChanlunX Line: drew " + linesDrawn + " Bi segments");
+        }
+        catch (Throwable t) {
+            error("ChanlunX Line failed: " + t.getClass().getSimpleName() + ": " + t.getMessage());
+        }
+    }
+
+    private static float[] copyHighs(DataSeries series, int size)
+    {
+        float[] high = new float[size];
+        for (int i = 0; i < size; i++) {
+            high[i] = series.getHigh(i);
+        }
+        return high;
+    }
+
+    private static float[] copyLows(DataSeries series, int size)
+    {
+        float[] low = new float[size];
+        for (int i = 0; i < size; i++) {
+            low[i] = series.getLow(i);
+        }
+        return low;
     }
 }
